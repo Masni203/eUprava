@@ -1,0 +1,74 @@
+services:
+  zdravstvo-db:
+    image: postgres:15
+    container_name: euprava-zdravstvo-db
+    environment:
+      POSTGRES_DB: zdravstvo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - zdravstvo-db-data:/var/lib/postgresql/data
+    networks:
+      - euprava-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zdravstvo_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  op-db:
+    image: postgres:15
+    container_name: euprava-op-db
+    environment:
+      POSTGRES_DB: op_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - op-db-data:/var/lib/postgresql/data
+    networks:
+      - euprava-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d op_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  zdravstvo:
+    build:
+      context: ./zdravstvo
+    container_name: euprava-zdravstvo
+    depends_on:
+      zdravstvo-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8080:8080"
+    networks:
+      - euprava-net
+
+  otvoreni-podaci:
+    build:
+      context: ./otvoreni-podaci
+    container_name: euprava-otvoreni-podaci
+    depends_on:
+      op-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8081:8080"
+    networks:
+      - euprava-net
+
+volumes:
+  zdravstvo-db-data:
+  op-db-data:
+
+networks:
+  euprava-net:
+    driver: bridge

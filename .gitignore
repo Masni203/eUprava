@@ -1,0 +1,30 @@
+# Maven
+target/
+*.jar
+*.war
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse / VS Code
+.classpath
+.project
+.settings/
+.vscode/
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Spring
+HELP.md
+application-local.yml
+application-local.properties
+
+# Local tooling
+.claude/

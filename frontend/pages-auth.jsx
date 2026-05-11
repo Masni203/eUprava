@@ -217,7 +217,7 @@ const Landing = ({ onLogin, onPublicOP }) => {
 };
 
 // ============ Register form ============
-// Self-service registracija pravi PACIJENT nalog na Zdravstvo servisu (CLAUDE.md FAZA 3).
+// Self-service registracija pravi PACIJENT nalog na Zdravstvo servisu.
 // OP `KORISNIK_OP` self-register postoji na backendu ali nije izložen u UI-ju.
 const RegisterForm = ({ onDone, onBack }) => {
   const [svc, setSvc] = useState('zdravstvo'); // 'zdravstvo' | 'op'

@@ -157,4 +157,4 @@ docker compose up --build -d  # ponovo seed-uje data.sql
 
 ## Autori
 
-Projekat iz predmeta eUprava — fakultetski rad. Frontend dizajn importovan iz Claude artifacts handoff bundle-a.
+Projekat iz predmeta eUprava — fakultetski rad.

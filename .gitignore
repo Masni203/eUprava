@@ -27,4 +27,5 @@ application-local.yml
 application-local.properties
 
 # Local tooling
+.tooling/
 .claude/

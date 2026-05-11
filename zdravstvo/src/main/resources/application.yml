@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: zdravstvo
+  profiles:
+    active: dev
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
+
+server:
+  port: 8080
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+euprava:
+  jwt:
+    secret: change-me-in-prod-please-this-is-a-demo-secret-key-32bytes-min
+    expiration-ms: 86400000
+  otvoreni-podaci:
+    base-url: http://otvoreni-podaci:8080
+    api-key: demo-shared-api-key-between-services

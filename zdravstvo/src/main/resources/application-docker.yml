@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://zdravstvo-db:5432/zdravstvo_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+euprava:
+  otvoreni-podaci:
+    base-url: http://otvoreni-podaci:8080

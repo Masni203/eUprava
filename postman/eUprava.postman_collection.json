@@ -1,0 +1,253 @@
+{
+  "info": {
+    "_postman_id": "euprava-collection-v1",
+    "name": "eUprava — Zdravstvo + Otvoreni Podaci",
+    "description": "Kompletna kolekcija REST API zahteva za fakultetski projekat eUprava.\n\nPostavljanje:\n1. Pokreni `docker compose up --build -d`\n2. Otvori 'Auth — Login (Admin Zdravstvo)' i 'Auth — Login (Admin OP)' jednom da se popune {{token-zd}} i {{token-op}}\n3. Probaj bilo koji ostali zahtev\n\nVarijable: base-zd, base-op, token-zd, token-op, api-key — vidi 'Variables' tab.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base-zd", "value": "http://localhost:8080"},
+    {"key": "base-op", "value": "http://localhost:8081"},
+    {"key": "token-zd", "value": ""},
+    {"key": "token-op", "value": ""},
+    {"key": "api-key", "value": "demo-shared-api-key-between-services"}
+  ],
+  "item": [
+    {
+      "name": "Zdravstvo / Auth",
+      "item": [
+        {
+          "name": "Login — Admin",
+          "event": [{"listen": "test", "script": {"exec": [
+            "if (pm.response.code === 200) {",
+            "  const j = pm.response.json();",
+            "  pm.collectionVariables.set('token-zd', j.token);",
+            "  pm.collectionVariables.set('me-zd-uloga', j.uloga);",
+            "}"
+          ], "type": "text/javascript"}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"admin@euprava.gov.rs\",\n  \"lozinka\": \"demo1234\"\n}"},
+            "url": "{{base-zd}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Login — Doktor",
+          "event": [{"listen": "test", "script": {"exec": ["if (pm.response.code === 200) pm.collectionVariables.set('token-zd', pm.response.json().token);"], "type": "text/javascript"}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"marko.petrovic@kcs.rs\",\"lozinka\":\"demo1234\"}"},
+            "url": "{{base-zd}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Login — Pacijent",
+          "event": [{"listen": "test", "script": {"exec": ["if (pm.response.code === 200) pm.collectionVariables.set('token-zd', pm.response.json().token);"], "type": "text/javascript"}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"jovan.markovic@example.rs\",\"lozinka\":\"demo1234\"}"},
+            "url": "{{base-zd}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Register — novi Pacijent",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ime\": \"Test\",\n  \"prezime\": \"Korisnik\",\n  \"email\": \"test+{{$timestamp}}@example.rs\",\n  \"lozinka\": \"demo1234\",\n  \"jmbg\": \"1234567890123\",\n  \"datumRodjenja\": \"1995-05-15\",\n  \"grad\": \"Beograd\",\n  \"telefon\": \"+381 60 000 0000\"\n}"},
+            "url": "{{base-zd}}/api/auth/register"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zdravstvo / Šifarnici",
+      "item": [
+        {"name": "Specijalizacije", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/specijalizacije"}},
+        {"name": "Bolnice", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/bolnice"}},
+        {"name": "MKB-10 (filter q)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/mkb?q=hipertenzija", "host": ["{{base-zd}}"], "path": ["api","mkb"], "query": [{"key": "q", "value": "hipertenzija"}]}}}
+      ]
+    },
+    {
+      "name": "Zdravstvo / Pacijenti",
+      "item": [
+        {"name": "Lista (paged)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/pacijenti?size=20&q=", "host": ["{{base-zd}}"], "path": ["api","pacijenti"], "query": [{"key": "size", "value": "20"}, {"key": "q", "value": ""}, {"key": "jmbg", "value": "", "disabled": true}, {"key": "grad", "value": "", "disabled": true}]}}},
+        {"name": "Detalj #1", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/pacijenti/1"}},
+        {"name": "Profil tekućeg PACIJENT", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/pacijenti/me"}},
+        {
+          "name": "Kreiranje (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ime\": \"Petar\",\n  \"prezime\": \"Petrović\",\n  \"email\": \"petar.p@example.rs\",\n  \"lozinka\": \"demo1234\",\n  \"jmbg\": \"0101199012345\",\n  \"datumRodjenja\": \"1990-01-01\",\n  \"grad\": \"Niš\",\n  \"telefon\": \"+381 60 111 2222\"\n}"},
+            "url": "{{base-zd}}/api/pacijenti"
+          }
+        },
+        {"name": "Brisanje (ADMIN)", "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/pacijenti/99"}}
+      ]
+    },
+    {
+      "name": "Zdravstvo / Doktori",
+      "item": [
+        {"name": "Lista (paged)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/doktori?size=20", "host": ["{{base-zd}}"], "path": ["api","doktori"], "query": [{"key": "size", "value": "20"}, {"key": "specijalizacija", "value": "kardio", "disabled": true}, {"key": "bolnica", "value": "KCS", "disabled": true}]}}},
+        {
+          "name": "Kreiranje (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ime\": \"Petar\",\n  \"prezime\": \"Lekarović\",\n  \"email\": \"petar.l@kcs.rs\",\n  \"lozinka\": \"demo1234\",\n  \"specijalizacijaSifra\": \"opsta\",\n  \"bolnicaSifra\": \"KCS\"\n}"},
+            "url": "{{base-zd}}/api/doktori"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zdravstvo / Pregledi",
+      "item": [
+        {"name": "Lista (paged + filteri)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/pregledi?size=20", "host": ["{{base-zd}}"], "path": ["api","pregledi"], "query": [{"key": "size", "value": "20"}, {"key": "pacijentId", "value": "1", "disabled": true}, {"key": "doktorId", "value": "1", "disabled": true}, {"key": "datum", "value": "2026-05-09", "disabled": true}, {"key": "status", "value": "ZAKAZAN", "disabled": true}]}}},
+        {"name": "Moji (PACIJENT/DOKTOR)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/pregledi/moji"}},
+        {"name": "Dostupni termini (slot enumeration)", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/pregledi/dostupni-termini?doktorId=1&datum=2026-06-15", "host": ["{{base-zd}}"], "path": ["api","pregledi","dostupni-termini"], "query": [{"key": "doktorId", "value": "1"}, {"key": "datum", "value": "2026-06-15"}]}}},
+        {
+          "name": "Zakazi (sa validacijom)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"pacijentId\": 1,\n  \"doktorId\": 2,\n  \"datum\": \"2026-06-15\",\n  \"vreme\": \"09:00\",\n  \"razlog\": \"Test iz Postman-a\"\n}"},
+            "url": "{{base-zd}}/api/pregledi/zakazi"
+          }
+        },
+        {
+          "name": "Promena statusa (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"status\":\"OTKAZAN\"}"},
+            "url": "{{base-zd}}/api/pregledi/1/status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zdravstvo / Karton",
+      "item": [
+        {"name": "Karton pacijenta #1", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/karton/1"}},
+        {
+          "name": "Dodavanje dijagnoze",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"mkbSifra\": \"R51\",\n  \"doktorId\": 1,\n  \"datum\": \"2026-05-10\",\n  \"terapija\": \"Paracetamol 500mg, 3x dnevno\",\n  \"aktivna\": true\n}"},
+            "url": "{{base-zd}}/api/karton/1/dijagnoza"
+          }
+        },
+        {
+          "name": "Dodavanje alergije",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"naziv\":\"Aspirin\",\"stepen\":\"srednji\"}"},
+            "url": "{{base-zd}}/api/karton/1/alergija"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zdravstvo / Izveštaji + Statistika",
+      "item": [
+        {"name": "Izveštaj — JSON", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/izvestaji/generisi?period=mesec&format=JSON", "host": ["{{base-zd}}"], "path": ["api","izvestaji","generisi"], "query": [{"key": "period", "value": "mesec"}, {"key": "format", "value": "JSON"}]}}},
+        {"name": "Izveštaj — CSV download", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/izvestaji/generisi?period=godina&format=CSV", "host": ["{{base-zd}}"], "path": ["api","izvestaji","generisi"], "query": [{"key": "period", "value": "godina"}, {"key": "format", "value": "CSV"}]}}},
+        {"name": "Stats", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": "{{base-zd}}/api/stats"}},
+        {"name": "Statistika → OP (FAZA 6 inter-service)", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{token-zd}}"}], "url": {"raw": "{{base-zd}}/api/statistika/objavi?tip=agregat&period=mesec", "host": ["{{base-zd}}"], "path": ["api","statistika","objavi"], "query": [{"key": "tip", "value": "agregat"}, {"key": "period", "value": "mesec"}]}}}
+      ]
+    },
+    {
+      "name": "OP / Auth",
+      "item": [
+        {
+          "name": "Login — ADMIN_OP",
+          "event": [{"listen": "test", "script": {"exec": ["if (pm.response.code === 200) pm.collectionVariables.set('token-op', pm.response.json().token);"], "type": "text/javascript"}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"admin.op@euprava.gov.rs\",\"lozinka\":\"demo1234\"}"},
+            "url": "{{base-op}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Login — KORISNIK_OP",
+          "event": [{"listen": "test", "script": {"exec": ["if (pm.response.code === 200) pm.collectionVariables.set('token-op', pm.response.json().token);"], "type": "text/javascript"}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"marija.ilic@op.rs\",\"lozinka\":\"demo1234\"}"},
+            "url": "{{base-op}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Register — KORISNIK_OP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ime\": \"Novi\",\n  \"prezime\": \"Korisnik\",\n  \"email\": \"novi+{{$timestamp}}@op.rs\",\n  \"lozinka\": \"demo1234\"\n}"},
+            "url": "{{base-op}}/api/auth/register"
+          }
+        }
+      ]
+    },
+    {
+      "name": "OP / Public (bez auth)",
+      "item": [
+        {"name": "Stats", "request": {"method": "GET", "url": "{{base-op}}/api/stats"}},
+        {"name": "Kategorije", "request": {"method": "GET", "url": "{{base-op}}/api/kategorije"}},
+        {"name": "Izvori", "request": {"method": "GET", "url": "{{base-op}}/api/izvori"}},
+        {"name": "Pretraga (paged + filteri)", "request": {"method": "GET", "url": {"raw": "{{base-op}}/api/dataset/pretraga?size=10", "host": ["{{base-op}}"], "path": ["api","dataset","pretraga"], "query": [{"key": "size", "value": "10"}, {"key": "kategorija", "value": "Pregledi", "disabled": true}, {"key": "godina", "value": "2026", "disabled": true}, {"key": "q", "value": "hipertenzija", "disabled": true}]}}},
+        {"name": "Detalj skupa", "request": {"method": "GET", "url": "{{base-op}}/api/dataset/1"}},
+        {"name": "Grafikon (Chart.js JSON)", "request": {"method": "GET", "url": "{{base-op}}/api/dataset/1/grafikon"}},
+        {"name": "Export CSV", "request": {"method": "GET", "url": "{{base-op}}/api/dataset/1/export?format=csv"}},
+        {"name": "Export JSON", "request": {"method": "GET", "url": "{{base-op}}/api/dataset/1/export?format=json"}},
+        {"name": "Preuzmi (counter)", "request": {"method": "POST", "url": "{{base-op}}/api/dataset/1/preuzmi?format=CSV"}}
+      ]
+    },
+    {
+      "name": "OP / Admin CRUD",
+      "item": [
+        {
+          "name": "Kreiraj skup",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token-op}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"naslov\": \"Test skup iz Postman-a\",\n  \"opis\": \"Demo skup za testiranje\",\n  \"kategorijaId\": 1,\n  \"izvorId\": 1,\n  \"godina\": 2026,\n  \"opstina\": \"Beograd\",\n  \"datum\": \"2026-05-10\",\n  \"brojRedova\": 100,\n  \"status\": \"NACRT\",\n  \"formati\": [\"CSV\",\"JSON\"],\n  \"payload\": \"{\\\"tip\\\":\\\"agregat\\\",\\\"kolone\\\":[\\\"opstina\\\",\\\"broj\\\"]}\"\n}"},
+            "url": "{{base-op}}/api/dataset"
+          }
+        },
+        {"name": "Brisanje skupa", "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{token-op}}"}], "url": "{{base-op}}/api/dataset/99"}}
+      ]
+    },
+    {
+      "name": "Inter-service / Direktan import (X-Api-Key)",
+      "item": [
+        {
+          "name": "POST /api/dataset/import (validan ključ)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "X-Api-Key", "value": "{{api-key}}"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"naslov\": \"Direktan import iz Postman-a\",\n  \"opis\": \"Test simulacije Zdravstvo→OP toka\",\n  \"kategorijaNaziv\": \"Pregledi\",\n  \"izvorNaziv\": \"MZ RS\",\n  \"godina\": 2026,\n  \"opstina\": \"Sve\",\n  \"datum\": \"2026-05-10\",\n  \"brojRedova\": 5,\n  \"formati\": [\"CSV\",\"JSON\"],\n  \"payload\": \"{\\\"tip\\\":\\\"agregat\\\",\\\"kolone\\\":[\\\"opstina\\\",\\\"broj\\\"],\\\"redovi\\\":[[\\\"Beograd\\\",10],[\\\"Niš\\\",5]]}\"\n}"},
+            "url": "{{base-op}}/api/dataset/import"
+          }
+        },
+        {
+          "name": "POST /api/dataset/import (pogrešan ključ → 401)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "X-Api-Key", "value": "WRONG-KEY"}, {"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"naslov\": \"x\",\n  \"opis\": \"x\",\n  \"kategorijaNaziv\": \"Pregledi\",\n  \"izvorNaziv\": \"MZ RS\",\n  \"godina\": 2026,\n  \"datum\": \"2026-05-10\",\n  \"payload\": \"{}\"\n}"},
+            "url": "{{base-op}}/api/dataset/import"
+          }
+        }
+      ]
+    }
+  ]
+}

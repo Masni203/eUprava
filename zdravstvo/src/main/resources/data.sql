@@ -117,11 +117,23 @@ INSERT INTO alergija (id, pacijent_id, naziv, stepen) VALUES
   (3, 1, 'Lateks',     'nizak')
 ON CONFLICT (id) DO NOTHING;
 
+-- ----- Notifikacije (demo) -----
+-- korisnik_id: 1=Admin, 2=Marko Petrović (DOKTOR), 10=Jovan Marković (PACIJENT)
+INSERT INTO notifikacija (id, korisnik_id, tip, naslov, tekst, link_ruta, procitana, datum) VALUES
+  (1, 10, 'INFO',     'Podsetnik na pregled',    'Imate zakazan pregled 15.05.2026 u 10:30 kod dr Marko Petrović (Opšta praksa).', '/moji-pregledi', FALSE, '2026-05-14 08:00:00'),
+  (2, 10, 'USPESNO',  'Pregled završen',         'Vaš pregled od 02.04.2026 je završen. Možete pogledati nalaz u elektronskom kartonu.', '/karton',        TRUE,  '2026-04-02 11:30:00'),
+  (3, 10, 'UPOZORENJE','Termin otkazan',         'Termin pregleda 21.02.2026 je otkazan od strane ordinacije. Zakažite novi termin.', '/zakazi',        TRUE,  '2026-02-21 09:15:00'),
+  (4, 2,  'INFO',     'Novi zakazan pregled',    'Pacijent Jovan Marković je zakazao pregled za 15.05.2026 u 10:30.', '/moji-pregledi', FALSE, '2026-05-10 16:42:00'),
+  (5, 2,  'INFO',     'Pacijent otkazao termin', 'Pacijent je otkazao pregled zakazan za 22.05.2026.', '/moji-pregledi', FALSE, '2026-05-12 09:21:00'),
+  (6, 1,  'USPESNO',  'Sistem ažuriran',         'Verzija 1.1.0 — dodate notifikacije i radni tok odobravanja objava na portalu OP.', NULL,             FALSE, '2026-05-17 12:00:00')
+ON CONFLICT (id) DO NOTHING;
+
 -- ----- Resync sequences (PostgreSQL) tako da @GeneratedValue krene od max(id)+1 -----
-SELECT setval(pg_get_serial_sequence('korisnik', 'id'),  COALESCE(MAX(id), 1)) FROM korisnik;
-SELECT setval(pg_get_serial_sequence('doktor',   'id'),  COALESCE(MAX(id), 1)) FROM doktor;
-SELECT setval(pg_get_serial_sequence('pacijent', 'id'),  COALESCE(MAX(id), 1)) FROM pacijent;
-SELECT setval(pg_get_serial_sequence('karton',   'id'),  COALESCE(MAX(id), 1)) FROM karton;
-SELECT setval(pg_get_serial_sequence('pregled',  'id'),  COALESCE(MAX(id), 1)) FROM pregled;
-SELECT setval(pg_get_serial_sequence('dijagnoza','id'),  COALESCE(MAX(id), 1)) FROM dijagnoza;
-SELECT setval(pg_get_serial_sequence('alergija', 'id'),  COALESCE(MAX(id), 1)) FROM alergija;
+SELECT setval(pg_get_serial_sequence('korisnik',     'id'),  COALESCE(MAX(id), 1)) FROM korisnik;
+SELECT setval(pg_get_serial_sequence('doktor',       'id'),  COALESCE(MAX(id), 1)) FROM doktor;
+SELECT setval(pg_get_serial_sequence('pacijent',     'id'),  COALESCE(MAX(id), 1)) FROM pacijent;
+SELECT setval(pg_get_serial_sequence('karton',       'id'),  COALESCE(MAX(id), 1)) FROM karton;
+SELECT setval(pg_get_serial_sequence('pregled',      'id'),  COALESCE(MAX(id), 1)) FROM pregled;
+SELECT setval(pg_get_serial_sequence('dijagnoza',    'id'),  COALESCE(MAX(id), 1)) FROM dijagnoza;
+SELECT setval(pg_get_serial_sequence('alergija',     'id'),  COALESCE(MAX(id), 1)) FROM alergija;
+SELECT setval(pg_get_serial_sequence('notifikacija', 'id'),  COALESCE(MAX(id), 1)) FROM notifikacija;

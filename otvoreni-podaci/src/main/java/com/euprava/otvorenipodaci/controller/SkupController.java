@@ -83,6 +83,22 @@ public class SkupController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/odobri")
+    @PreAuthorize("hasRole('ADMIN_OP')")
+    @Operation(summary = "Odobravanje skupa u statusu NA_ODOBRENJU → OBJAVLJEN")
+    public ResponseEntity<SkupDTO> odobri(@PathVariable Long id) {
+        return ResponseEntity.ok(service.odobri(id));
+    }
+
+    @PostMapping("/{id}/odbij")
+    @PreAuthorize("hasRole('ADMIN_OP')")
+    @Operation(summary = "Odbijanje skupa u statusu NA_ODOBRENJU → ODBIJEN")
+    public ResponseEntity<SkupDTO> odbij(@PathVariable Long id,
+                                          @RequestBody(required = false) Map<String, String> body) {
+        String razlog = body == null ? null : body.get("razlog");
+        return ResponseEntity.ok(service.odbij(id, razlog));
+    }
+
     @GetMapping("/{id}/grafikon")
     @Operation(summary = "Chart-ready JSON za vizualizaciju (Chart.js / ApexCharts)")
     public ResponseEntity<GrafikonDTO> grafikon(@PathVariable Long id) {
@@ -112,6 +128,21 @@ public class SkupController {
                     .body(data.toCsv(redovi, meta.kolone()));
         }
         return ResponseEntity.badRequest().body(Map.of("message", "Nepoznat format: " + format + " (csv|json)"));
+    }
+
+    @GetMapping("/po-izvoru")
+    @Operation(summary = "Lista svih skupova (svi statusi) po nazivu izvora — X-Api-Key zaštita")
+    public ResponseEntity<PageResponse<SkupDTO>> poIzvoru(
+            @RequestHeader(value = "X-Api-Key", required = false) String apiKey,
+            @RequestParam String izvor,
+            @PageableDefault(size = 100, sort = "datum", direction = Sort.Direction.DESC) Pageable pageable
+    ) {
+        if (apiKey == null || !apiKey.equals(importApiKey)) {
+            return ResponseEntity.status(401).build();
+        }
+        // status=null vraća sve (NACRT, NA_ODOBRENJU, OBJAVLJEN, ODBIJEN) za dati izvor.
+        return ResponseEntity.ok(PageResponse.of(
+                service.pretraga(null, null, null, null, null, izvor, pageable)));
     }
 
     @PostMapping("/import")

@@ -78,9 +78,20 @@ INSERT INTO skup_format (skup_id, format) VALUES
   (9,'CSV')
 ON CONFLICT DO NOTHING;
 
+-- ----- Notifikacije (demo) -----
+-- korisnik_id: 1=Admin OP, 2=Marija (KORISNIK_OP)
+INSERT INTO notifikacija (id, korisnik_id, tip, naslov, tekst, link_ruta, procitana, datum) VALUES
+  (1, 1, 'INFO',     'Novi skup čeka odobrenje',    'Pristigao je novi skup podataka iz Zdravstva. Pregledajte i odobrite/odbijte objavu.', '/op-odobravanje', FALSE, '2026-05-17 10:15:00'),
+  (2, 1, 'USPESNO',  'Skup objavljen',              'Skup "Najčešće dijagnoze (MKB-10) 2025" je uspešno objavljen u javnom katalogu.', '/katalog', TRUE,  '2026-01-15 11:00:00'),
+  (3, 1, 'UPOZORENJE','Skup povučen',               'Skup "Hitna pomoć — intervencije Q1" je povučen iz kataloga i prebačen u status NACRT.', '/op-sinhronizacija', FALSE, '2026-05-16 14:22:00'),
+  (4, 2, 'INFO',     'Novi skup u katalogu',        'Objavljen je novi skup "Bolničko lečenje — broj ležajeva". Pregledajte detalje i preuzmite.', '/katalog', FALSE, '2026-05-01 09:30:00'),
+  (5, 2, 'USPESNO',  'Preuzimanje uspešno',         'Vaše preuzimanje skupa "Pregledi po opštinama — Q1 2026" je zabeleženo.', '/katalog', TRUE,  '2026-04-08 16:05:00')
+ON CONFLICT (id) DO NOTHING;
+
 -- ----- Resync sequences (PostgreSQL) -----
-SELECT setval(pg_get_serial_sequence('korisnik',    'id'), COALESCE(MAX(id), 1)) FROM korisnik;
-SELECT setval(pg_get_serial_sequence('kategorija',  'id'), COALESCE(MAX(id), 1)) FROM kategorija;
-SELECT setval(pg_get_serial_sequence('izvor',       'id'), COALESCE(MAX(id), 1)) FROM izvor;
-SELECT setval(pg_get_serial_sequence('skup',        'id'), COALESCE(MAX(id), 1)) FROM skup;
-SELECT setval(pg_get_serial_sequence('preuzimanje', 'id'), COALESCE(MAX(id), 1)) FROM preuzimanje;
+SELECT setval(pg_get_serial_sequence('korisnik',     'id'), COALESCE(MAX(id), 1)) FROM korisnik;
+SELECT setval(pg_get_serial_sequence('kategorija',   'id'), COALESCE(MAX(id), 1)) FROM kategorija;
+SELECT setval(pg_get_serial_sequence('izvor',        'id'), COALESCE(MAX(id), 1)) FROM izvor;
+SELECT setval(pg_get_serial_sequence('skup',         'id'), COALESCE(MAX(id), 1)) FROM skup;
+SELECT setval(pg_get_serial_sequence('preuzimanje',  'id'), COALESCE(MAX(id), 1)) FROM preuzimanje;
+SELECT setval(pg_get_serial_sequence('notifikacija', 'id'), COALESCE(MAX(id), 1)) FROM notifikacija;

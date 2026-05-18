@@ -49,14 +49,18 @@ public class OtvoreniPodaciClient {
         }
     }
 
-    /** Razmena 2: vraća listu skupova po izvoru (filter ?izvor=…). */
+    /**
+     * Razmena 2: vraća listu skupova po izvoru sa SVIM statusima (NACRT, NA_ODOBRENJU, OBJAVLJEN, ODBIJEN).
+     * Koristi X-Api-Key zaštićen endpoint /api/dataset/po-izvoru (javni /pretraga vraća samo OBJAVLJEN anonimcima).
+     */
     public JsonNode pretraziPoIzvoru(String izvor, int size) {
         try {
             return http.get()
-                    .uri(uri -> uri.path("/api/dataset/pretraga")
+                    .uri(uri -> uri.path("/api/dataset/po-izvoru")
                             .queryParam("izvor", izvor)
                             .queryParam("size", size)
                             .build())
+                    .header("X-Api-Key", apiKey)
                     .retrieve()
                     .body(JsonNode.class);
         } catch (HttpServerErrorException | ResourceAccessException e) {

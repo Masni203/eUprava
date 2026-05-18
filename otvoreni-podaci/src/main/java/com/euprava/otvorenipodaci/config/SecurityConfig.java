@@ -93,6 +93,8 @@ public class SecurityConfig {
                 // Import preko API ključa — sigurnost je u kontroleru.
                 .requestMatchers(HttpMethod.POST,   "/api/dataset/import").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/dataset/import/*").permitAll()
+                // Listing po izvoru — vidi sve statuse, sigurnost preko X-Api-Key (za AdminOPSinhronizacija ekran u Zd).
+                .requestMatchers(HttpMethod.GET,    "/api/dataset/po-izvoru").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())

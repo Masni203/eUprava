@@ -40,3 +40,6 @@ euprava:
   otvoreni-podaci:
     base-url: http://otvoreni-podaci:8080
     api-key: demo-shared-api-key-between-services
+  import:
+    # Deljeni X-Api-Key kojim OP servis gura notifikacije ka Zdravstvu (razmena #4).
+    api-key: demo-shared-api-key-between-services

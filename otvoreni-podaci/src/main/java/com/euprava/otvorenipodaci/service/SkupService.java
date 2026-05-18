@@ -1,5 +1,6 @@
 package com.euprava.otvorenipodaci.service;
 
+import com.euprava.otvorenipodaci.client.ZdravstvoClient;
 import com.euprava.otvorenipodaci.dto.SkupCreateDTO;
 import com.euprava.otvorenipodaci.dto.SkupDTO;
 import com.euprava.otvorenipodaci.dto.SkupImportDTO;
@@ -13,6 +14,8 @@ import com.euprava.otvorenipodaci.model.Korisnik;
 import com.euprava.otvorenipodaci.model.Preuzimanje;
 import com.euprava.otvorenipodaci.model.Skup;
 import com.euprava.otvorenipodaci.model.StatusSkupa;
+import com.euprava.otvorenipodaci.model.TipNotifikacije;
+import com.euprava.otvorenipodaci.model.UlogaOP;
 import com.euprava.otvorenipodaci.repository.IzvorRepository;
 import com.euprava.otvorenipodaci.repository.KategorijaRepository;
 import com.euprava.otvorenipodaci.repository.KorisnikRepository;
@@ -37,6 +40,8 @@ public class SkupService {
     private final KorisnikRepository korisnici;
     private final PreuzimanjeRepository preuzimanja;
     private final SkupMapper mapper;
+    private final NotifikacijaService notifikacije;
+    private final ZdravstvoClient zdravstvo;
 
     @Transactional(readOnly = true)
     public Page<SkupDTO> pretraga(StatusSkupa status, String kategorija, String opstina, Integer godina, String q, String izvor, Pageable pageable) {
@@ -122,10 +127,54 @@ public class SkupService {
                 .datum(req.datum())
                 .brojPreuzimanja(0L)
                 .brojRedova(req.brojRedova())
-                .status(StatusSkupa.OBJAVLJEN)
+                .status(StatusSkupa.NA_ODOBRENJU)
                 .formati(req.formati() == null ? new HashSet<>() : new HashSet<>(req.formati()))
                 .payload(req.payload())
                 .build());
+        // Notifikacija ADMIN_OP — novi skup čeka odobrenje.
+        notifikacije.pushSvima(UlogaOP.ADMIN_OP, TipNotifikacije.INFO,
+                "Novi skup čeka odobrenje",
+                "Stigao je skup \"" + s.getNaslov() + "\" (" + req.izvorNaziv() + ") i čeka pregled.",
+                "/op-odobravanje");
+        return mapper.toDto(s);
+    }
+
+    @Transactional
+    public SkupDTO odobri(Long id) {
+        Skup s = naci(id);
+        if (s.getStatus() != StatusSkupa.NA_ODOBRENJU) {
+            throw new ConflictException("Skup nije u statusu NA_ODOBRENJU: " + id);
+        }
+        s.setStatus(StatusSkupa.OBJAVLJEN);
+        // Interna OP notifikacija za audit trag — svi admini OP-a vide odluku.
+        notifikacije.pushSvima(UlogaOP.ADMIN_OP, TipNotifikacije.USPESNO,
+                "Skup odobren",
+                "Skup \"" + s.getNaslov() + "\" je odobren i objavljen u javnom katalogu.",
+                "/katalog");
+        // Razmena #4 — obavesti Zdravstvo (autor objave je tamo).
+        zdravstvo.posaljiNotifikaciju(null, TipNotifikacije.USPESNO,
+                "Skup objavljen na OP",
+                "Vaša objava \"" + s.getNaslov() + "\" je odobrena i dostupna u javnom katalogu.",
+                "/op-sinhronizacija");
+        return mapper.toDto(s);
+    }
+
+    @Transactional
+    public SkupDTO odbij(Long id, String razlog) {
+        Skup s = naci(id);
+        if (s.getStatus() != StatusSkupa.NA_ODOBRENJU) {
+            throw new ConflictException("Skup nije u statusu NA_ODOBRENJU: " + id);
+        }
+        s.setStatus(StatusSkupa.ODBIJEN);
+        String r = (razlog == null || razlog.isBlank()) ? "Bez navedenog razloga." : razlog.trim();
+        notifikacije.pushSvima(UlogaOP.ADMIN_OP, TipNotifikacije.UPOZORENJE,
+                "Skup odbijen",
+                "Skup \"" + s.getNaslov() + "\" je odbijen. Razlog: " + r,
+                "/op-odobravanje");
+        zdravstvo.posaljiNotifikaciju(null, TipNotifikacije.UPOZORENJE,
+                "Objava odbijena",
+                "Vaša objava \"" + s.getNaslov() + "\" nije odobrena. Razlog: " + r,
+                "/op-sinhronizacija");
         return mapper.toDto(s);
     }
 

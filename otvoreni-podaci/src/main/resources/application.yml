@@ -39,3 +39,8 @@ euprava:
     expiration-ms: 86400000
   import:
     api-key: demo-shared-api-key-between-services
+  zdravstvo:
+    # Base-URL Zdravstvo servisa za razmenu #4 (OP -> Zd notifikacije).
+    # U Docker-u: http://zdravstvo:8080 ; lokalno: http://localhost:8080.
+    base-url: ${ZDRAVSTVO_BASE_URL:http://localhost:8080}
+    api-key: demo-shared-api-key-between-services

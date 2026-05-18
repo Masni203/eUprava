@@ -1,4 +1,4 @@
-// ============ API klijent (FAZA 7) ============
+// ============ API klijent ============
 //
 // Dva backend servisa: zdravstvo (:8080) i otvoreni-podaci (:8081).
 // Svaki ima svoj JWT — držimo dva odvojena tokena u localStorage.

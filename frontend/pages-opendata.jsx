@@ -1,10 +1,23 @@
 // ============ Open Data pages ============
 
+// Sort opcije za listing skupova — vrednost je Spring `sort=field,dir`.
+const SORT_OPCIJE_OP = [
+  { val: 'datum,desc',           label: 'Datum — najnovije prvo' },
+  { val: 'datum,asc',            label: 'Datum — najstarije prvo' },
+  { val: 'brojPreuzimanja,desc', label: 'Najpreuzimaniji' },
+  { val: 'brojPreuzimanja,asc',  label: 'Najmanje preuzimanja' },
+  { val: 'naslov,asc',           label: 'Naslov A–Š' },
+  { val: 'naslov,desc',          label: 'Naslov Š–A' },
+  { val: 'godina,desc',          label: 'Godina (novije)' },
+  { val: 'godina,asc',           label: 'Godina (starije)' },
+];
+
 // ---------- PUBLIC ----------
 const OPPublic = ({ onBackToHealth, onLogin }) => {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Sve');
   const [god, setGod] = useState('Sve');
+  const [sort, setSort] = useState('datum,desc');
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(null);
@@ -25,6 +38,7 @@ const OPPublic = ({ onBackToHealth, onLogin }) => {
           q: q || undefined,
           kategorija: cat === 'Sve' ? undefined : cat,
           godina: god === 'Sve' ? undefined : god,
+          sort,
           size: 50,
         },
       });
@@ -33,7 +47,7 @@ const OPPublic = ({ onBackToHealth, onLogin }) => {
       toast.push({ kind: 'error', title: 'Greška', body: e.message });
     } finally { setLoading(false); }
   };
-  useEffect(() => { reload(); }, [cat, god]);
+  useEffect(() => { reload(); }, [cat, god, sort]);
   // q je manualno (Pretraži dugme i Enter)
 
   // Grafikon kad se otvori detalj
@@ -102,6 +116,10 @@ const OPPublic = ({ onBackToHealth, onLogin }) => {
           <span className="filter-label" style={{marginLeft:8}}>Godina:</span>
           <Select value={god} onChange={(e) => setGod(e.target.value)} style={{maxWidth:120}}>
             {GODINE_OP.map(k => <option key={k}>{k}</option>)}
+          </Select>
+          <span className="filter-label" style={{marginLeft:8}}>Sortiraj:</span>
+          <Select value={sort} onChange={(e) => setSort(e.target.value)} style={{maxWidth:230}}>
+            {SORT_OPCIJE_OP.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
           </Select>
           <span style={{flex:1}} />
           <span className="muted small">{loading ? 'Učitavam…' : `${list.length} rezultata`}</span>
@@ -186,6 +204,7 @@ const OPKorisnikHome = () => {
 const OPKorisnikDatasetovi = () => {
   const [cat, setCat] = useState('Sve');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState('datum,desc');
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(null);
@@ -196,13 +215,13 @@ const OPKorisnikDatasetovi = () => {
     setLoading(true);
     try {
       const resp = await api.op.get('/api/dataset/pretraga', {
-        query: { q: q || undefined, kategorija: cat === 'Sve' ? undefined : cat, size: 50 },
+        query: { q: q || undefined, kategorija: cat === 'Sve' ? undefined : cat, sort, size: 50 },
       });
       setList(resp.content || []);
     } catch (e) { toast.push({ kind: 'error', title: 'Greška', body: e.message }); }
     finally { setLoading(false); }
   };
-  useEffect(() => { reload(); }, [cat]);
+  useEffect(() => { reload(); }, [cat, sort]);
 
   useEffect(() => {
     if (!opened) { setChart(null); return; }
@@ -225,6 +244,10 @@ const OPKorisnikDatasetovi = () => {
         <Input className="search-input input" placeholder="Pretraži po nazivu..." value={q}
           onChange={e=>setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && reload()} style={{maxWidth:280}} />
         <Button kind="secondary" icon="search" onClick={reload}>Pretraži</Button>
+        <span className="filter-label" style={{marginLeft:8}}>Sortiraj:</span>
+        <Select value={sort} onChange={(e) => setSort(e.target.value)} style={{maxWidth:230}}>
+          {SORT_OPCIJE_OP.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+        </Select>
         <span style={{flex:1}} />
         <span className="filter-label">Kategorija:</span>
         <div className="chip-row">
@@ -458,12 +481,10 @@ const OPAdminDatasetovi = () => {
   const reload = async () => {
     setLoading(true);
     try {
-      // Admin vidi i NACRT i OBJAVLJEN — pošalje status= prazno
-      const [obj, nac] = await Promise.all([
-        api.op.get('/api/dataset/pretraga', { query: { status: 'OBJAVLJEN', size: 100 } }),
-        api.op.get('/api/dataset/pretraga', { query: { status: 'NACRT',     size: 100 } }),
-      ]);
-      const all = [...(obj.content || []), ...(nac.content || [])]
+      // Admin vidi sve statuse — povuci paralelno po svakom (filter ignoriše status kad korisnik ne pošalje).
+      const statusi = ['OBJAVLJEN', 'NACRT', 'NA_ODOBRENJU', 'ODBIJEN'];
+      const res = await Promise.all(statusi.map(s => api.op.get('/api/dataset/pretraga', { query: { status: s, size: 100 } })));
+      const all = res.flatMap(r => r?.content || [])
         .sort((a, b) => (b.datum || '').localeCompare(a.datum || ''));
       setItems(all);
     } catch (e) {
@@ -502,7 +523,7 @@ const OPAdminDatasetovi = () => {
                   <td><Badge kind="neutral">{d.kategorija?.naziv}</Badge></td>
                   <td className="small">{d.izvor?.naziv}</td>
                   <td className="num mono">{formatBroj(d.brojPreuzimanja || 0)}</td>
-                  <td><StatusBadge status={d.status === 'OBJAVLJEN' ? 'objavljen' : 'nacrt'} /></td>
+                  <td><StatusBadge status={(d.status || 'nacrt').toLowerCase()} /></td>
                   <td className="mono small">{fmtDate(d.datum)}</td>
                   <td className="actions">
                     <button className="icon-btn danger" title="Obriši" onClick={() => remove(d)}><Icon name="trash" size={14} /></button>
@@ -520,19 +541,57 @@ const OPAdminDatasetovi = () => {
 };
 
 const OPAdminOdobrenje = () => {
-  const [items, setItems] = useState(DATASET_NACRTI);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [razlogZa, setRazlogZa] = useState(null); // {id, naslov}
+  const [razlogText, setRazlogText] = useState('');
+  const [busyId, setBusyId] = useState(null);
   const toast = useToast();
-  const decide = (id, ok) => {
-    setItems(prev => prev.filter(x => x.id !== id));
-    toast.push({ kind: ok ? 'success' : 'warning', title: ok ? 'Skup podataka odobren i objavljen' : 'Skup podataka odbijen', body: items.find(x => x.id === id)?.naslov });
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const r = await api.op.get('/api/dataset/pretraga', { query: { status: 'NA_ODOBRENJU', size: 100 } });
+      setItems(r?.content || []);
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Greška', body: e.message });
+    } finally { setLoading(false); }
   };
+  useEffect(() => { reload(); }, []);
+
+  const odobri = async (d) => {
+    setBusyId(d.id);
+    try {
+      await api.op.post(`/api/dataset/${d.id}/odobri`);
+      toast.push({ kind: 'success', title: 'Skup odobren i objavljen', body: d.naslov });
+      setItems(prev => prev.filter(x => x.id !== d.id));
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Odobravanje neuspešno', body: e.message });
+    } finally { setBusyId(null); }
+  };
+
+  const potvrdiOdbij = async () => {
+    if (!razlogZa) return;
+    setBusyId(razlogZa.id);
+    try {
+      await api.op.post(`/api/dataset/${razlogZa.id}/odbij`, { razlog: razlogText });
+      toast.push({ kind: 'warning', title: 'Skup odbijen', body: razlogZa.naslov });
+      setItems(prev => prev.filter(x => x.id !== razlogZa.id));
+      setRazlogZa(null);
+      setRazlogText('');
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Odbijanje neuspešno', body: e.message });
+    } finally { setBusyId(null); }
+  };
+
   return (
     <div>
-      <PageHeader title="Odobrenje skupova podataka"
-        subtitle={`${items.length} nacrt${items.length === 1 ? '' : 'a'} čeka pregled`}
-        breadcrumbs={['Admin OP','Odobrenje']} />
-      {items.length === 0 ? (
-        <div className="card"><div className="card-body"><EmptyState title="Nema nacrt-ova na čekanju" body="Svi pristigli skupovi podataka su pregledani." icon="success" /></div></div>
+      <PageHeader title="Skupovi koji čekaju odobrenje"
+        subtitle={loading ? 'Učitavam…' : `${items.length} skup${items.length === 1 ? '' : 'a'} čeka pregled`}
+        breadcrumbs={['Admin OP','Odobrenje']}
+        actions={<Button kind="ghost" size="sm" icon="refresh" onClick={reload}>Osveži</Button>} />
+      {items.length === 0 && !loading ? (
+        <div className="card"><div className="card-body"><EmptyState title="Nema skupova na čekanju" body="Svi pristigli skupovi podataka su pregledani." icon="success" /></div></div>
       ) : (
         <div className="col gap-md">
           {items.map(d => (
@@ -541,20 +600,21 @@ const OPAdminOdobrenje = () => {
                 <div className="row between" style={{alignItems:'flex-start', gap:24}}>
                   <div style={{flex:1}}>
                     <div className="row gap-sm" style={{marginBottom:8}}>
-                      <Badge kind="warning" dot>Nacrt</Badge>
-                      <Badge kind="neutral">{d.kategorija}</Badge>
+                      <StatusBadge status="na_odobrenju" />
+                      <Badge kind="neutral">{d.kategorija?.naziv}</Badge>
+                      <Badge kind="neutral">{d.izvor?.naziv}</Badge>
                     </div>
                     <h3 style={{margin:'0 0 8px', fontSize:17}}>{d.naslov}</h3>
+                    <p className="small muted" style={{margin:'0 0 10px', maxWidth:760}}>{d.opis}</p>
                     <div className="grid-3 small" style={{maxWidth:680}}>
-                      <div><span className="muted">Podnosilac:</span> <strong>{d.podnosilac}</strong></div>
-                      <div><span className="muted">Datum:</span> <span className="mono">{d.datum}</span></div>
-                      <div><span className="muted">Veličina:</span> <span className="mono">{d.velicina}</span></div>
+                      <div><span className="muted">Godina:</span> <strong>{d.godina}</strong></div>
+                      <div><span className="muted">Datum:</span> <span className="mono">{fmtDate(d.datum)}</span></div>
+                      <div><span className="muted">Redova:</span> <span className="mono">{formatBroj(d.brojRedova || 0)}</span></div>
                     </div>
                   </div>
-                  <div className="row gap-sm">
-                    <Button kind="secondary" icon="eye">Pregled</Button>
-                    <Button kind="danger" icon="x" onClick={() => decide(d.id, false)}>Odbij</Button>
-                    <Button kind="success" icon="check" onClick={() => decide(d.id, true)}>Odobri</Button>
+                  <div className="row gap-sm" style={{flexShrink:0}}>
+                    <Button kind="danger" icon="x" disabled={busyId === d.id} onClick={() => { setRazlogZa({id: d.id, naslov: d.naslov}); setRazlogText(''); }}>Odbij</Button>
+                    <Button kind="primary" icon="check" loading={busyId === d.id} onClick={() => odobri(d)}>Odobri</Button>
                   </div>
                 </div>
               </div>
@@ -562,31 +622,113 @@ const OPAdminOdobrenje = () => {
           ))}
         </div>
       )}
+      <Modal open={!!razlogZa} title="Razlog odbijanja"
+        onClose={() => { setRazlogZa(null); setRazlogText(''); }}
+        footer={<>
+          <Button kind="secondary" onClick={() => { setRazlogZa(null); setRazlogText(''); }}>Otkaži</Button>
+          <Button kind="danger" loading={!!busyId} onClick={potvrdiOdbij}>Potvrdi odbijanje</Button>
+        </>}>
+        <div className="col gap-sm">
+          <div className="small muted">Skup: <strong>{razlogZa?.naslov}</strong></div>
+          <Field label="Razlog (opciono)" hint="Razlog se prosleđuje Zdravstvu kao deo notifikacije.">
+            <Textarea rows={4} value={razlogText} onChange={(e) => setRazlogText(e.target.value)} placeholder="Npr. Skup ne sadrži anonimizovane podatke." />
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 };
 
-const OPAdminStatistika = () => (
-  <div>
-    <PageHeader title="Statistika preuzimanja" subtitle="Analitika korišćenja portala" />
-    <div className="grid-2" style={{alignItems:'flex-start'}}>
-      <div className="card">
-        <div className="card-head"><h3>Preuzimanja kroz vreme</h3></div>
-        <div className="card-body"><LineChart data={TREND_PREUZIMANJA} color="#0d4f3c" /></div>
+const OPAdminStatistika = () => {
+  const [skupovi, setSkupovi] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      // Povlačimo samo OBJAVLJENE — obrisani, nacrt, na-odobrenju, odbijeni ne ulaze u javnu statistiku.
+      const r = await api.op.get('/api/dataset/pretraga', { query: { status: 'OBJAVLJEN', size: 200 } });
+      setSkupovi(r?.content || []);
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Greška', body: e.message });
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { reload(); }, []);
+
+  // Top 10 po preuzimanjima.
+  const top = useMemo(() => [...skupovi]
+      .sort((a, b) => (b.brojPreuzimanja || 0) - (a.brojPreuzimanja || 0))
+      .slice(0, 10)
+      .map(d => ({ o: d.naslov, v: d.brojPreuzimanja || 0 })),
+    [skupovi]);
+
+  // Raspodela preuzimanja po kategoriji (pie %, largest-remainder za zbir tačno 100%).
+  const poKategoriji = useMemo(() => {
+    const palette = ['#0d4f3c', '#1098ad', '#b45309', '#7c2d12', '#5a6478', '#0369a1', '#7e22ce', '#15803d'];
+    const grupe = {};
+    skupovi.forEach(d => {
+      const k = d.kategorija?.naziv || '—';
+      grupe[k] = (grupe[k] || 0) + (d.brojPreuzimanja || 0);
+    });
+    const total = Object.values(grupe).reduce((s, x) => s + x, 0);
+    if (total === 0) return [];
+    const items = Object.entries(grupe).map(([k, count], i) => {
+      const exact = 100 * count / total;
+      return { k, count, floor: Math.floor(exact), rem: exact - Math.floor(exact), c: palette[i % palette.length] };
+    });
+    let rem = 100 - items.reduce((s, x) => s + x.floor, 0);
+    items.sort((a, b) => b.rem - a.rem).forEach(it => { it.v = it.floor + (rem-- > 0 ? 1 : 0); });
+    return items.sort((a, b) => b.count - a.count).map(it => ({ k: it.k, v: it.v, c: it.c }));
+  }, [skupovi]);
+
+  // Trend objava po mesecu (poslednjih 8 — proxy za aktivnost portala; preuzimanja po mesecu bi tražilo novi backend endpoint).
+  const trend = useMemo(() => {
+    const MES = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Avg','Sep','Okt','Nov','Dec'];
+    const buckets = new Map();
+    skupovi.forEach(d => {
+      if (!d.datum) return;
+      const ym = d.datum.slice(0, 7);
+      buckets.set(ym, (buckets.get(ym) || 0) + (d.brojPreuzimanja || 0));
+    });
+    const today = new Date();
+    const out = [];
+    for (let i = 7; i >= 0; i--) {
+      const dt = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      out.push({ m: MES[dt.getMonth()], v: buckets.get(ym) || 0 });
+    }
+    return out;
+  }, [skupovi]);
+
+  return (
+    <div>
+      <PageHeader title="Statistika preuzimanja"
+        subtitle={loading ? 'Učitavam…' : `Analitika nad ${skupovi.length} aktivnih skupova`}
+        actions={<Button kind="ghost" size="sm" icon="refresh" onClick={reload}>Osveži</Button>} />
+      <div className="grid-2" style={{alignItems:'flex-start'}}>
+        <div className="card">
+          <div className="card-head"><h3>Preuzimanja po mesecu objave</h3></div>
+          <div className="card-body">
+            {trend.length > 0 ? <LineChart data={trend} color="#0d4f3c" /> : <div className="muted">Nema podataka.</div>}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h3>Po kategorijama</h3></div>
+          <div className="card-body">
+            {poKategoriji.length > 0 ? <PieChart data={poKategoriji} /> : <div className="muted">Nema podataka.</div>}
+          </div>
+        </div>
       </div>
-      <div className="card">
-        <div className="card-head"><h3>Po kategorijama</h3></div>
-        <div className="card-body"><PieChart data={KATEGORIJE_RASPODELA} /></div>
+      <div className="card" style={{marginTop:18}}>
+        <div className="card-head"><h3>Top 10 najpreuzimanijih skupova podataka</h3></div>
+        <div className="card-body">
+          {top.length > 0 ? <BarChart height={320} data={top} color="#0d4f3c" /> : <div className="muted">Nema aktivnih skupova.</div>}
+        </div>
       </div>
     </div>
-    <div className="card" style={{marginTop:18}}>
-      <div className="card-head"><h3>Top 10 najpreuzimanijih skupova podataka</h3></div>
-      <div className="card-body">
-        <BarChart height={320} data={TOP_DATASETOVI.map(d => ({ o: d.n, v: d.v }))} color="#0d4f3c" />
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 const OPAdminIzvori = () => (
   <div>

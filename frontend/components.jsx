@@ -160,6 +160,8 @@ const StatusBadge = ({ status }) => {
     objavljen: ['success', 'Objavljen'],
     nacrt: ['warning', 'Nacrt'],
     odobren: ['info', 'Odobren'],
+    na_odobrenju: ['warning', 'Na odobrenju'],
+    odbijen: ['danger', 'Odbijen'],
     'in-progress': ['warning', 'U toku'],
     upcoming: ['neutral', 'Predstoji'],
     done: ['success', 'Završen'],
@@ -211,6 +213,201 @@ const EmptyState = ({ title = 'Nema podataka', body, icon = 'inbox' }) => (
     {body && <div className="empty-body">{body}</div>}
   </div>
 );
+
+// ----- Quick-search pacijenta u TopBar-u (DOKTOR/ADMIN) -----
+const QuickSearchPacijent = ({ baseRole, onPick }) => {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const boxRef = useRef(null);
+
+  // Debounce pretrage.
+  useEffect(() => {
+    if (!q || q.trim().length < 2) { setItems(null); return; }
+    let cancel = false;
+    setBusy(true);
+    const id = setTimeout(async () => {
+      try {
+        const r = await api.zd.get('/api/pacijenti', { query: { q: q.trim(), size: 8 } });
+        if (!cancel) setItems(r?.content || []);
+      } catch (_) { if (!cancel) setItems([]); }
+      finally    { if (!cancel) setBusy(false); }
+    }, 300);
+    return () => { cancel = true; clearTimeout(id); };
+  }, [q]);
+
+  // Klik van panela.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const klik = (p) => {
+    setOpen(false);
+    setQ('');
+    setItems(null);
+    onPick && onPick(p, baseRole);
+  };
+
+  const showPanel = open && q.trim().length >= 2;
+  return (
+    <div className="quick-search" ref={boxRef}>
+      <Icon name="search" size={14} className="qs-icon" />
+      <input
+        className="qs-input"
+        type="search"
+        placeholder="Brza pretraga pacijenta…"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+      />
+      {showPanel && (
+        <div className="qs-panel">
+          {busy && !items && <div className="qs-empty"><span className="spinner" /> Tražim…</div>}
+          {items && items.length === 0 && <div className="qs-empty">Nema rezultata za „{q}".</div>}
+          {items && items.map(p => (
+            <button key={p.id} type="button" className="qs-item" onClick={() => klik(p)}>
+              <div className="qs-avatar">{((p.ime?.[0] || '?') + (p.prezime?.[0] || '')).toUpperCase()}</div>
+              <div className="qs-body">
+                <div className="qs-name">{p.ime} {p.prezime}</div>
+                <div className="qs-meta">
+                  <span className="mono">{p.jmbg}</span>
+                  {p.grad && <span className="muted"> · {p.grad}</span>}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ----- Notifikacije (zvono u TopBar-u) -----
+const NOTIF_POLL_MS = 30000;
+
+function fmtNotifVreme(iso) {
+  if (!iso) return '';
+  // Spring serializuje LocalDateTime bez timezone suffix-a, a docker container vrti u UTC —
+  // dodaj 'Z' ako string nema tz oznaku, da bi browser ispravno preračunao u local time.
+  const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
+  const d = new Date(s);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60)        return 'upravo sad';
+  if (diff < 3600)      return Math.floor(diff / 60) + ' min';
+  if (diff < 86400)     return Math.floor(diff / 3600) + ' h';
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + ' d';
+  return d.toLocaleDateString('sr-RS');
+}
+
+const NOTIF_TIP_ICON = { INFO: 'info', USPESNO: 'success', UPOZORENJE: 'alert', GRESKA: 'alert' };
+
+const NotifBell = ({ svc, onLink }) => {
+  const client = svc === 'op' ? api.op : api.zd;
+  const [count, setCount] = useState(0);
+  const [items, setItems] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const boxRef = useRef(null);
+  const toast = useToast();
+
+  const ucitajBrojac = useCallback(async () => {
+    try {
+      const r = await client.get('/api/notifikacije/broj-neprocitanih');
+      setCount(r?.neprocitano ?? 0);
+    } catch (_) { /* tiho — kratka mreža */ }
+  }, [client]);
+
+  const ucitajListu = useCallback(async () => {
+    setBusy(true);
+    try {
+      const r = await client.get('/api/notifikacije/moje', { query: { page: 0, size: 20 } });
+      setItems(r?.content || []);
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Greška', body: e.message });
+    } finally { setBusy(false); }
+  }, [client, toast]);
+
+  // Početni brojač + polling.
+  useEffect(() => {
+    ucitajBrojac();
+    const iv = setInterval(ucitajBrojac, NOTIF_POLL_MS);
+    return () => clearInterval(iv);
+  }, [ucitajBrojac]);
+
+  // Pri otvaranju — povuci listu.
+  useEffect(() => { if (open) ucitajListu(); }, [open, ucitajListu]);
+
+  // Klik van panela = zatvori.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const klikStavku = async (n) => {
+    if (!n.procitana) {
+      try {
+        await client.patch(`/api/notifikacije/${n.id}/procitana`);
+        setItems(arr => arr.map(x => x.id === n.id ? { ...x, procitana: true } : x));
+        setCount(c => Math.max(0, c - 1));
+      } catch (_) {}
+    }
+    if (n.linkRuta && onLink) {
+      setOpen(false);
+      onLink(n.linkRuta);
+    }
+  };
+
+  const oznaciSve = async () => {
+    try {
+      const r = await client.post('/api/notifikacije/oznaci-sve-procitane');
+      setItems(arr => (arr || []).map(x => ({ ...x, procitana: true })));
+      setCount(0);
+      toast.push({ kind: 'success', title: 'Označeno kao pročitano', body: (r?.oznaceno || 0) + ' notifikacija' });
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Greška', body: e.message });
+    }
+  };
+
+  return (
+    <div className="notif" ref={boxRef}>
+      <button className="notif-trigger" onClick={() => setOpen(o => !o)} aria-label="Notifikacije" title="Notifikacije">
+        <Icon name="bell" size={17} />
+        {count > 0 && <span className="notif-badge">{count > 99 ? '99+' : count}</span>}
+      </button>
+      {open && (
+        <div className="notif-panel">
+          <div className="notif-head">
+            <div className="notif-title">Notifikacije {count > 0 && <span className="muted">· {count} nepročitano</span>}</div>
+            {count > 0 && (
+              <button className="link-btn" onClick={oznaciSve}>Označi sve</button>
+            )}
+          </div>
+          <div className="notif-list">
+            {busy && !items && <div className="notif-empty"><span className="spinner" /> Učitavam…</div>}
+            {items && items.length === 0 && <div className="notif-empty">Nemate notifikacije.</div>}
+            {items && items.map(n => (
+              <button key={n.id} type="button" onClick={() => klikStavku(n)}
+                className={`notif-item${n.procitana ? '' : ' unread'}`}>
+                <Icon className={`ni-icon tip-${(n.tip || 'INFO').toLowerCase()}`} name={NOTIF_TIP_ICON[n.tip] || 'info'} size={16} />
+                <div className="ni-body">
+                  <div className="ni-title">{n.naslov}</div>
+                  <div className="ni-text">{n.tekst}</div>
+                  <div className="ni-time">{fmtNotifVreme(n.datum)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ----- Toggle switch -----
 const Toggle = ({ on, onChange }) => (
@@ -324,50 +521,50 @@ const MkbAutocomplete = ({ value, onChange }) => {
 // ----- Footer -----
 const Footer = () => (
   <footer className="footer">
-    <div className="footer-grid">
-      <div>
-        <div className="row gap-md" style={{marginBottom: 12}}>
+    <div className="footer-main">
+      <div className="footer-brand">
+        <div className="row gap-md" style={{marginBottom: 10}}>
           <div className="brand-mark" style={{width:34,height:34,fontSize:14}}>eU</div>
           <div className="brand-text">
             <div className="b1" style={{color:'#fff'}}>eUprava</div>
             <div className="b2" style={{color:'#7d88a8'}}>Republika Srbija</div>
           </div>
         </div>
-        <div style={{lineHeight: 1.55, maxWidth: 280}}>
-          Jedinstveni portal za digitalne usluge državne uprave. Zdravstveni sistem i Otvoreni Podaci.
+        <div className="footer-tag">
+          Fakultetski demo prototip — zdravstveni sistem i portal otvorenih podataka.
+        </div>
+        <div className="footer-services">
+          <span><span className="dot dot-zd" /> Zdravstvo · <code>:8080</code></span>
+          <span><span className="dot dot-op" /> Otvoreni Podaci · <code>:8081</code></span>
         </div>
       </div>
-      <div>
-        <h4>Sistem Zdravstvo</h4>
+
+      <div className="footer-col">
+        <h4>API & dokumentacija</h4>
         <ul>
-          <li><a href="#">Pacijenti</a></li>
-          <li><a href="#">Doktori i ustanove</a></li>
-          <li><a href="#">Elektronski karton</a></li>
-          <li><a href="#">Zakazivanje pregleda</a></li>
+          <li><a href="http://localhost:8080/swagger-ui.html" target="_blank" rel="noreferrer">Swagger — Zdravstvo</a></li>
+          <li><a href="http://localhost:8081/swagger-ui.html" target="_blank" rel="noreferrer">Swagger — Otvoreni Podaci</a></li>
+          <li><a href="http://localhost:8080/actuator/health" target="_blank" rel="noreferrer">Health · Zdravstvo</a></li>
+          <li><a href="http://localhost:8081/actuator/health" target="_blank" rel="noreferrer">Health · Otvoreni Podaci</a></li>
         </ul>
       </div>
-      <div>
-        <h4>Otvoreni Podaci</h4>
-        <ul>
-          <li><a href="#">Katalog skupova podataka</a></li>
-          <li><a href="#">API dokumentacija</a></li>
-          <li><a href="#">Standardi</a></li>
-          <li><a href="#">RSS feed</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4>Kontakt</h4>
-        <ul>
-          <li>kontakt@euprava.gov.rs</li>
-          <li>+381 11 311 7000</li>
-          <li>Nemanjina 11, Beograd</li>
-          <li><a href="#">Prijavi grešku</a></li>
-        </ul>
+
+      <div className="footer-col">
+        <h4>Tehnologije</h4>
+        <div className="tech-badges">
+          <span>Spring Boot 3.2.5</span>
+          <span>Java 21</span>
+          <span>PostgreSQL 15</span>
+          <span>JWT · HS256</span>
+          <span>MapStruct</span>
+          <span>React 18</span>
+        </div>
       </div>
     </div>
+
     <div className="footer-bottom">
-      <div>© 2026 Republika Srbija — Demo prototip za potrebe ispita</div>
-      <div>v1.0.0 · MIT License · Otvoreni kod</div>
+      <div>© 2026 · Fakultetski rad — predmet eUprava</div>
+      <div>v1.0.0 · MIT License</div>
     </div>
   </footer>
 );

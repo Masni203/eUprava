@@ -23,6 +23,8 @@ const SIDEBAR_NAV = {
     { id: 'izvestaji', label: 'Izveštaji', icon: 'file' },
     { id: 'statistika', label: 'Statistika', icon: 'chart' },
     { id: 'objavi', label: 'Objavi statistiku', icon: 'upload', accent: true },
+    { id: 'op-sinhronizacija', label: 'Sinhronizacija sa OP', icon: 'refresh' },
+    { id: 'op-povuci', label: 'Povlačenje objava', icon: 'trash' },
     { id: 'profil', label: 'Profil', icon: 'user' },
   ],
   'op-korisnik': [
@@ -31,6 +33,7 @@ const SIDEBAR_NAV = {
   ],
   'op-admin': [
     { id: 'home', label: 'Početna', icon: 'home' },
+    { id: 'odobrenje', label: 'Čeka odobrenje', icon: 'inbox', accent: true },
     { id: 'datasetovi', label: 'Skupovi podataka', icon: 'database' },
     { id: 'izvori', label: 'Izvori', icon: 'shield' },
     { id: 'statistika', label: 'Statistika preuzimanja', icon: 'chart' },
@@ -110,8 +113,16 @@ const SystemSwitch = ({ system, onSwitch, role }) => {
   );
 };
 
-const TopBar = ({ system, role, baseRole, onSwitch, onLogout }) => {
+// Baza-uloga (pacijent/doktor/admin/op-korisnik/op-admin) → backend servis čiji JWT bell koristi.
+function notifSvcForRole(baseRole) {
+  return (baseRole === 'op-admin' || baseRole === 'op-korisnik') ? 'op' : 'zdravstvo';
+}
+
+const TopBar = ({ system, role, baseRole, onSwitch, onLogout, onNotifLink, onQuickPick }) => {
   const info = ROLE_INFO[role];
+  const notifSvc = notifSvcForRole(baseRole || role);
+  const effRole = role || baseRole;
+  const quickVidljiv = (effRole === 'doktor' || effRole === 'admin') && system === 'health';
   return (
     <div className="navbar">
       <div className="brand">
@@ -122,7 +133,9 @@ const TopBar = ({ system, role, baseRole, onSwitch, onLogout }) => {
         </div>
       </div>
       <SystemSwitch system={system} onSwitch={onSwitch} role={baseRole || role} />
+      {quickVidljiv && <QuickSearchPacijent baseRole={effRole} onPick={onQuickPick} />}
       <div className="nav-spacer" />
+      <NotifBell svc={notifSvc} onLink={onNotifLink} />
       <div className="user-chip">
         <div className="avatar">{info.initials}</div>
         <div style={{lineHeight:1.2}}>
@@ -158,6 +171,43 @@ const App = () => {
   }, []);
 
   const go = (p, prm = null) => { setPage(p); setParams(prm); };
+
+  // Quick-search picker iz TopBar-a — doktor otvara karton, admin otvara filtrirane korisnike.
+  const onQuickPick = (pacijent, baseRole) => {
+    if (!pacijent) return;
+    setSystem('health');
+    if (baseRole === 'doktor') {
+      go('pretraga', { openPacijentId: pacijent.id });
+    } else if (baseRole === 'admin') {
+      go('korisnici', { q: pacijent.jmbg || (pacijent.ime + ' ' + pacijent.prezime) });
+    }
+  };
+
+  // linkRuta iz notifikacije -> ciljna stranica (po base-role korisnika).
+  // op-sinhronizacija, op-povuci, objavi su sidebar item-i Zd ADMIN-a, ne OP-a.
+  const onNotifLink = (linkRuta) => {
+    if (!linkRuta) return;
+    const r = linkRuta.replace(/^\/+/, '').toLowerCase();
+    // Rute koje se otvaraju u OP sistemu (op-admin sidebar).
+    const opRoutes = {
+      'katalog': 'datasetovi',
+      'op-odobravanje': 'odobrenje',
+    };
+    // Rute koje se otvaraju u Zdravstvo sistemu (pacijent/doktor/admin sidebar).
+    const zdRoutes = {
+      'karton': 'karton',
+      'moji-pregledi': 'moji-pregledi',
+      'zakazi': 'zakazi',
+      'pacijenti': 'pacijenti',
+      'pregledi': 'pregledi',
+      'korisnici': 'korisnici',
+      'objavi': 'objavi',
+      'op-sinhronizacija': 'op-sinhronizacija',
+      'op-povuci': 'op-povuci',
+    };
+    if (zdRoutes[r]) { setSystem('health');   go(zdRoutes[r]); return; }
+    if (opRoutes[r]) { setSystem('opendata'); go(opRoutes[r]); return; }
+  };
 
   const onLogin = (r) => {
     setRole(r);
@@ -212,18 +262,20 @@ const App = () => {
       // Doktor
       case 'doktor/home': return <DoktorHome go={go} />;
       case 'doktor/moji-pregledi': return <DoktorMojiPregledi go={go} />;
-      case 'doktor/pacijenti': return <DoktorPretraga />;
-      case 'doktor/pretraga': return <DoktorPretraga />;
+      case 'doktor/pacijenti': return <DoktorPretraga params={params} />;
+      case 'doktor/pretraga': return <DoktorPretraga params={params} />;
       case 'doktor/unos-dijagnoze': return <DoktorUnosDijagnoze params={params} go={go} />;
       case 'doktor/profil': return <ProfilStub role={effectiveRole} />;
       // Admin Zdravstvo
       case 'admin/home': return <AdminHome />;
-      case 'admin/korisnici': return <AdminKorisnici />;
-      case 'admin/doktori': return <AdminKorisnici />;
+      case 'admin/korisnici': return <AdminKorisnici params={params} />;
+      case 'admin/doktori': return <AdminKorisnici params={params} />;
       case 'admin/pregledi': return <DoktorMojiPregledi go={go} />;
       case 'admin/izvestaji': return <AdminIzvestaji />;
       case 'admin/statistika': return <AdminHome />;
       case 'admin/objavi': return <AdminObjavi />;
+      case 'admin/op-sinhronizacija': return <AdminOPSinhronizacija />;
+      case 'admin/op-povuci': return <AdminOPPovuci />;
       case 'admin/profil': return <ProfilStub role={effectiveRole} />;
       // OP Korisnik
       case 'op-korisnik/home': return <OPKorisnikHome />;
@@ -248,7 +300,7 @@ const App = () => {
         <div className="flag"><span className="flag-bar" /><span>Republika Srbija — eUprava</span></div>
         <div>{ROLE_INFO[role].mail} · Demo prototip</div>
       </div>
-      <TopBar system={system} role={effectiveRole} baseRole={role} onSwitch={onSwitch} onLogout={onLogout} />
+      <TopBar system={system} role={effectiveRole} baseRole={role} onSwitch={onSwitch} onLogout={onLogout} onNotifLink={onNotifLink} onQuickPick={onQuickPick} />
       <div className="shell">
         <Sidebar role={effectiveRole} page={page} onNav={go} onLogout={onLogout} />
         <main className="main"><div className="main-inner">{renderPage()}</div></main>

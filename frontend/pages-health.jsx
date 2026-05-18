@@ -296,6 +296,12 @@ function fmtTime(iso) {
   if (!iso) return '';
   return String(iso).slice(0, 5);
 }
+function fmtDateTime(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt)) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}.${dt.getFullYear()} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
 
 const PacijentMojiPregledi = () => {
   const [filter, setFilter] = useState('svi');
@@ -538,6 +544,56 @@ const DoktorHome = ({ go }) => {
           </div>
         </div>
       </div>
+
+      <DoktorChartsBlock pregledi={pregledi} />
+    </div>
+  );
+};
+
+// Grafici za doktorov dashboard — pregledi po nedeljama + raspodela po statusu.
+const DoktorChartsBlock = ({ pregledi }) => {
+  const DAN = 24 * 3600 * 1000;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const sedmice = [];
+  for (let i = 3; i >= 0; i--) {
+    const kraj = new Date(today.getTime() - i * 7 * DAN);
+    const pocetak = new Date(kraj.getTime() - 6 * DAN);
+    const broj = pregledi.filter(p => {
+      if (!p.datum) return false;
+      const d = new Date(p.datum);
+      return d >= pocetak && d <= kraj;
+    }).length;
+    const label = `${pocetak.getDate()}.${pocetak.getMonth() + 1}. — ${kraj.getDate()}.${kraj.getMonth() + 1}.`;
+    sedmice.push({ m: label, v: broj });
+  }
+
+  const STATUS_PIE = [
+    { k: 'Zakazani',  st: 'ZAKAZAN',  c: '#1e3a8a' },
+    { k: 'U toku',    st: 'U_TOKU',   c: '#b45309' },
+    { k: 'Završeni',  st: 'ZAVRSEN',  c: '#0d4f3c' },
+    { k: 'Otkazani',  st: 'OTKAZAN',  c: '#9aa3b2' },
+  ];
+  const ukupno = pregledi.length || 1;
+  const raspodela = STATUS_PIE.map(s => ({
+    k: s.k, c: s.c,
+    v: Math.round(100 * pregledi.filter(p => p.status === s.st).length / ukupno)
+  })).filter(x => x.v > 0);
+
+  if (!pregledi.length) return null;
+  return (
+    <div className="grid-2" style={{marginTop:18, alignItems:'flex-start'}}>
+      <div className="card">
+        <div className="card-head"><h3>Moji pregledi po nedeljama (4)</h3></div>
+        <div className="card-body">
+          <LineChart data={sedmice} color="#0d4f3c" />
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head"><h3>Raspodela po statusu</h3></div>
+        <div className="card-body">
+          {raspodela.length > 0 ? <PieChart data={raspodela} /> : <div className="muted">Nema podataka.</div>}
+        </div>
+      </div>
     </div>
   );
 };
@@ -707,7 +763,7 @@ const DoktorUnosDijagnoze = ({ params, go }) => {
   );
 };
 
-const DoktorPretraga = () => {
+const DoktorPretraga = ({ params } = {}) => {
   const [q, setQ] = useState('');
   const [jmbg, setJmbg] = useState('');
   const [grad, setGrad] = useState('');
@@ -737,6 +793,17 @@ const DoktorPretraga = () => {
       setOpenedKarton(null);
     } finally { setKartonLoading(false); }
   };
+
+  // Quick-search iz TopBar-a — otvori karton automatski.
+  useEffect(() => {
+    if (!params?.openPacijentId) return;
+    (async () => {
+      try {
+        const p = await api.zd.get('/api/pacijenti/' + params.openPacijentId);
+        if (p) otvoriKarton(p);
+      } catch (_) {}
+    })();
+  }, [params?.openPacijentId]);
 
   return (
     <div>
@@ -836,9 +903,29 @@ const AdminHome = () => {
   const [stats, setStats] = useState(null);
   const [poSpec, setPoSpec] = useState([]);
   const [poOpstini, setPoOpstini] = useState([]);
+  const [poMesecu, setPoMesecu] = useState([]);
 
   useEffect(() => {
     api.zd.get('/api/stats').then(setStats).catch(() => {});
+    // Pregledi po mesecima — povuci sve preglede pa grupiši po YYYY-MM, prikaži poslednjih 6 meseci.
+    api.zd.get('/api/pregledi', { query: { size: 500 } }).then(p => {
+      const MESECI_KR = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Avg','Sep','Okt','Nov','Dec'];
+      const buckets = new Map();
+      (p.content || []).forEach(pr => {
+        if (!pr.datum) return;
+        const ym = pr.datum.slice(0, 7); // YYYY-MM
+        buckets.set(ym, (buckets.get(ym) || 0) + 1);
+      });
+      // Poslednjih 6 punih meseci, redom unazad od trenutnog.
+      const today = new Date();
+      const out = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        out.push({ m: MESECI_KR[d.getMonth()], v: buckets.get(ym) || 0 });
+      }
+      setPoMesecu(out);
+    }).catch(() => {});
     // Top 5 specijalizacija po broju doktora (proxi za "po pregledima" — backend nema spec×pregledi pa idemo na ovo).
     api.zd.get('/api/doktori', { query: { size: 100 } }).then(p => {
       const grupe = {};
@@ -881,6 +968,13 @@ const AdminHome = () => {
       <KPI icon="document" label="Pregleda ovog meseca" value={stats ? formatBroj(stats.pregledaOvogMeseca) : '…'} hint={stats ? `${formatBroj(stats.pregledaUkupno)} ukupno u sistemu` : ''} />
     </div>
 
+    <div className="card" style={{marginTop:18}}>
+      <div className="card-head"><h3>Pregledi po mesecima (poslednjih 6)</h3></div>
+      <div className="card-body">
+        {poMesecu.length > 0 ? <LineChart data={poMesecu} color="#1e3a8a" /> : <div className="muted">Učitavam…</div>}
+      </div>
+    </div>
+
     <div className="grid-2" style={{marginTop:18, alignItems:'flex-start'}}>
       <div className="card">
         <div className="card-head"><h3>Doktori po specijalizaciji</h3></div>
@@ -899,10 +993,11 @@ const AdminHome = () => {
   );
 };
 
-const AdminKorisnici = () => {
+const AdminKorisnici = ({ params } = {}) => {
   const [pacijenti, setPacijenti] = useState([]);
   const [doktori, setDoktori] = useState([]);
-  const [filter, setFilter] = useState('svi');
+  const [filter, setFilter] = useState(params?.q ? 'pacijent' : 'svi');
+  const [q, setQ] = useState(params?.q || '');
   const [loading, setLoading] = useState(false);
   const toast = useToast();
   const [confirm, confirmNode] = useConfirm();
@@ -910,8 +1005,9 @@ const AdminKorisnici = () => {
   const reload = async () => {
     setLoading(true);
     try {
+      const pacQ = q ? { q, size: 100 } : { size: 100 };
       const [p, d] = await Promise.all([
-        api.zd.get('/api/pacijenti', { query: { size: 100 } }),
+        api.zd.get('/api/pacijenti', { query: pacQ }),
         api.zd.get('/api/doktori',   { query: { size: 100 } }),
       ]);
       setPacijenti(p.content || []);
@@ -920,7 +1016,7 @@ const AdminKorisnici = () => {
       toast.push({ kind: 'error', title: 'Greška', body: e.message });
     } finally { setLoading(false); }
   };
-  useEffect(() => { reload(); }, []);
+  useEffect(() => { reload(); }, [q]);
 
   const removePacijent = async (p) => {
     const ok = await confirm({ title: 'Brisanje pacijenta', message: `Trajno obrisati pacijenta ${p.ime} ${p.prezime}?`, danger: true, confirmText: 'Obriši' });
@@ -1122,51 +1218,23 @@ const AdminObjavi = () => {
   const [tip, setTip] = useState('agregat');
   const [publishing, setPublishing] = useState(false);
   const [last, setLast] = useState(null);
-  const [istorija, setIstorija] = useState([]);
   const [confirm, confirmNode] = useConfirm();
   const toast = useToast();
 
-  const reloadIstorija = () => {
-    // Razmena 2: Zd → OP preko /api/statistika/objavljene (interno zovne OP /pretraga?izvor=MZ RS)
-    api.zd.get('/api/statistika/objavljene')
-      .then(p => setIstorija(p.content || []))
-      .catch(() => setIstorija([]));
-  };
-  useEffect(() => { reloadIstorija(); }, []);
-
-  const povuci = async (s) => {
-    const ok = await confirm({
-      title: 'Povlačenje objavljene statistike',
-      message: `Trajno povući "${s.naslov}" sa portala Otvorenih Podataka? Sva preuzimanja će biti obrisana.`,
-      danger: true,
-      confirmText: 'Povuci'
-    });
-    if (!ok) return;
-    try {
-      // Razmena 3: Zd → OP DELETE /api/dataset/import/{id}
-      await api.zd.del(`/api/statistika/objavljene/${s.id}`);
-      toast.push({ kind: 'success', title: 'Skup povučen sa OP-a' });
-      reloadIstorija();
-    } catch (e) {
-      toast.push({ kind: 'error', title: 'Povlačenje neuspešno', body: e.message });
-    }
-  };
-
   const publish = async () => {
     const ok = await confirm({
-      title: 'Objavi statistiku u Otvorene Podatke',
-      message: `Anonimni agregat (${tip} · period: ${period}) će biti poslat servisu Otvoreni Podaci i biće javno dostupan. Nastaviti?`,
-      confirmText: 'Da, objavi'
+      title: 'Pošalji statistiku u Otvorene Podatke',
+      message: `Anonimni agregat (${tip} · period: ${period}) će biti poslat servisu Otvoreni Podaci. Skup ide u status "Na odobrenju" — administrator OP-a treba da ga odobri pre nego što postane javan.`,
+      confirmText: 'Da, pošalji'
     });
     if (!ok) return;
     setPublishing(true);
     try {
       const resp = await api.zd.post(`/api/statistika/objavi?tip=${tip}&period=${period}`);
       setLast(resp);
-      toast.push({ kind: 'success', title: 'Objavljeno!', body: `Skup #${resp.id} · ${resp.brojRedova} redova` });
-      reloadIstorija();
+      toast.push({ kind: 'success', title: 'Poslato na odobrenje', body: `Skup #${resp.id} · ${resp.brojRedova} redova` });
     } catch (e) {
-      toast.push({ kind: 'error', title: 'Objavljivanje neuspešno', body: e.message });
+      toast.push({ kind: 'error', title: 'Slanje neuspešno', body: e.message });
     } finally {
       setPublishing(false);
     }
@@ -1174,8 +1242,8 @@ const AdminObjavi = () => {
 
   return (
     <div>
-      <PageHeader title="Objavi statistiku u Otvorene Podatke"
-        subtitle="Anonimno agregira pregledi/dijagnoze i šalje na javni katalog (FAZA 6 inter-service flow)"
+      <PageHeader title="Objavi statistiku"
+        subtitle="Pošalji anonimizovani agregat zdravstvenih podataka u portal Otvorenih Podataka"
         breadcrumbs={['Admin','Objavi statistiku']} />
 
       <div className="card" style={{marginBottom:18}}>
@@ -1205,8 +1273,8 @@ const AdminObjavi = () => {
       </div>
 
       {last && (
-        <div className="card" style={{marginBottom:18, borderLeft:'3px solid var(--success)'}}>
-          <div className="card-head"><h3>Poslednja objava</h3></div>
+        <div className="card" style={{borderLeft:'3px solid var(--warning)'}}>
+          <div className="card-head"><h3>Poslednja objava — čeka odobrenje</h3></div>
           <div className="card-body col gap-sm small">
             <div><strong>{last.naslov}</strong></div>
             <div className="muted">{last.opis}</div>
@@ -1215,23 +1283,148 @@ const AdminObjavi = () => {
               <Badge>{last.brojRedova} redova</Badge>
               <Badge kind="primary">{last.kategorija?.naziv}</Badge>
               <Badge>{last.izvor?.naziv}</Badge>
-              <StatusBadge status="objavljen" />
+              <StatusBadge status={(last.status || 'na_odobrenju').toLowerCase()} />
             </div>
+            <div className="muted small" style={{marginTop:6}}>Administrator OP-a će dobiti notifikaciju i odlučiti o objavi. Status pratite u "Sinhronizacija sa OP".</div>
           </div>
         </div>
       )}
+      {confirmNode}
+    </div>
+  );
+};
+
+const AdminOPSinhronizacija = () => {
+  const [istorija, setIstorija] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
+
+  const reload = () => {
+    setLoading(true);
+    setError(null);
+    api.zd.get('/api/statistika/objavljene')
+      .then(p => {
+        setIstorija(p.content || []);
+        setLastSync(new Date());
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { reload(); }, []);
+
+  const ukupnoPreuzimanja = istorija.reduce((s, x) => s + (x.brojPreuzimanja || 0), 0);
+  const brojPo = (st) => istorija.filter(x => x.status === st).length;
+  const naCekanju = brojPo('NA_ODOBRENJU');
+  const objavljeno = brojPo('OBJAVLJEN');
+
+  return (
+    <div>
+      <PageHeader title="Sinhronizacija sa Otvorenim Podacima"
+        subtitle="Pregled svih skupova koje je Zdravstvo poslalo na OP portal (uključujući one koji čekaju odobrenje)"
+        breadcrumbs={['Admin','Sinhronizacija sa OP']} />
+
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4, 1fr)', marginBottom:18}}>
+        <KPI label="Objavljenih" value={objavljeno} icon="database" />
+        <KPI label="Čeka odobrenje" value={naCekanju} icon="clock" />
+        <KPI label="Ukupno preuzimanja" value={formatBroj(ukupnoPreuzimanja)} icon="download" />
+        <KPI label="Poslednja sinhronizacija" value={lastSync ? fmtDateTime(lastSync) : '—'} icon="refresh" />
+      </div>
 
       <div className="card">
         <div className="card-head">
-          <h3>Prethodno objavljene statistike (eUprava izvor)</h3>
-          <Button kind="ghost" size="sm" icon="refresh" onClick={reloadIstorija}>Osveži</Button>
+          <h3>Skupovi objavljeni od strane MZ RS</h3>
+          <Button kind="primary" size="sm" icon="refresh" loading={loading} onClick={reload}>Sinhronizuj</Button>
         </div>
         <div className="table-wrap">
-          {istorija.length === 0 && <div className="empty-body muted" style={{padding:20}}>Nema prethodno objavljenih.</div>}
+          {error && <div className="empty-body" style={{padding:20, color:'var(--danger)'}}>Greška: {error}</div>}
+          {!error && istorija.length === 0 && !loading && (
+            <div className="empty-body muted" style={{padding:20}}>OP portal trenutno ne sadrži nijedan skup od MZ RS.</div>
+          )}
           {istorija.length > 0 && (
             <table className="table">
               <thead><tr>
-                <th>Naslov</th><th>Kategorija</th><th>Godina</th><th className="num">Preuzimanja</th><th>Datum objave</th>
+                <th>Naslov</th><th>Kategorija</th><th>Godina</th><th>Status</th>
+                <th className="num">Preuzimanja</th><th>Datum objave</th>
+              </tr></thead>
+              <tbody>
+                {istorija.map(s => (
+                  <tr key={s.id}>
+                    <td><strong>{s.naslov}</strong></td>
+                    <td>{s.kategorija?.naziv}</td>
+                    <td className="num">{s.godina}</td>
+                    <td><StatusBadge status={(s.status || 'objavljen').toLowerCase()} /></td>
+                    <td className="num mono">{formatBroj(s.brojPreuzimanja || 0)}</td>
+                    <td className="mono small">{fmtDate(s.datum)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdminOPPovuci = () => {
+  const [istorija, setIstorija] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [confirm, confirmNode] = useConfirm();
+  const toast = useToast();
+
+  const reload = () => {
+    setLoading(true);
+    api.zd.get('/api/statistika/objavljene')
+      .then(p => setIstorija(p.content || []))
+      .catch(() => setIstorija([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { reload(); }, []);
+
+  const povuci = async (s) => {
+    const ok = await confirm({
+      title: 'Povlačenje objavljene statistike',
+      message: `Trajno povući "${s.naslov}" sa portala Otvorenih Podataka? Sva preuzimanja će biti obrisana.`,
+      danger: true,
+      confirmText: 'Povuci'
+    });
+    if (!ok) return;
+    try {
+      await api.zd.del(`/api/statistika/objavljene/${s.id}`);
+      toast.push({ kind: 'success', title: 'Skup povučen sa OP-a' });
+      reload();
+    } catch (e) {
+      toast.push({ kind: 'error', title: 'Povlačenje neuspešno', body: e.message });
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Povlačenje objava"
+        subtitle="Trajno ukloni prethodno objavljeni skup sa portala Otvorenih Podataka"
+        breadcrumbs={['Admin','Povlačenje objava']} />
+
+      <div className="card" style={{marginBottom:18, borderLeft:'3px solid var(--danger)'}}>
+        <div className="card-body small">
+          <strong>Pažnja:</strong> Povlačenje skupa trajno briše njegov zapis na OP-u i sve evidentirane preuzimanja od strane korisnika. Akcija je nepovratna.
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h3>Aktivne objave</h3>
+          <Button kind="ghost" size="sm" icon="refresh" loading={loading} onClick={reload}>Osveži</Button>
+        </div>
+        <div className="table-wrap">
+          {istorija.length === 0 && !loading && (
+            <div className="empty-body muted" style={{padding:20}}>Trenutno nema aktivnih objava koje bi mogle biti povučene.</div>
+          )}
+          {istorija.length > 0 && (
+            <table className="table">
+              <thead><tr>
+                <th>Naslov</th><th>Kategorija</th><th>Godina</th>
+                <th className="num">Preuzimanja</th><th>Datum objave</th>
                 <th style={{textAlign:'right'}}>Akcija</th>
               </tr></thead>
               <tbody>
@@ -1242,8 +1435,8 @@ const AdminObjavi = () => {
                     <td className="num">{s.godina}</td>
                     <td className="num mono">{formatBroj(s.brojPreuzimanja || 0)}</td>
                     <td className="mono small">{fmtDate(s.datum)}</td>
-                    <td className="actions">
-                      <button className="icon-btn danger" title="Povuci sa OP-a" onClick={() => povuci(s)}><Icon name="trash" size={14} /></button>
+                    <td className="actions" style={{textAlign:'right'}}>
+                      <Button kind="danger" size="sm" icon="trash" onClick={() => povuci(s)}>Povuci</Button>
                     </td>
                   </tr>
                 ))}
@@ -1261,4 +1454,5 @@ Object.assign(window, {
   PacijentHome, PacijentZakazi, PacijentMojiPregledi, PacijentKarton,
   DoktorHome, DoktorMojiPregledi, DoktorUnosDijagnoze, DoktorPretraga,
   AdminHome, AdminKorisnici, AdminIzvestaji, AdminObjavi,
+  AdminOPSinhronizacija, AdminOPPovuci,
 });
